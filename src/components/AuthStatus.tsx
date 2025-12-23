@@ -38,14 +38,12 @@ export default function AuthStatus() {
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       {user ? (
         <>
-          <span style={{ fontSize: 14, color: "#222" }}>{user.email}</span>
+          <Link href="/account">
+            <span style={{ fontSize: 14, color: "#222" }}>{user.email}</span>
+          </Link>
           <button onClick={handleSignOut}>Sign out</button>
         </>
-      ) : (
-        <Link href="/login">
-          <button>Login / Sign up</button>
-        </Link>
-      )}
+      ) : null}
     </div>
   );
 }
