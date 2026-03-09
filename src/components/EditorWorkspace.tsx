@@ -69,6 +69,12 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
   const [consoleVisible, setConsoleVisible] = useState(false);
   const [consoleOutput, setConsoleOutput] = useState<string>("");
   const [isRunning, setIsRunning] = useState(false);
+  const [consoleHeight, setConsoleHeight] = useState<number>(160);
+  const draggingRef = useRef(false);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
+  const [customInput, setCustomInput] = useState<string>("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
   const [diagnostics, setDiagnostics] = useState<{ line: number; column?: number; message: string }[]>([]);
   const preRef = useRef<HTMLElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -220,6 +226,34 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
     return () => clearInterval(t);
   }, []);
 
+  // Handle drag-to-resize for console panel
+  useEffect(() => {
+    function onMove(e: any) {
+      if (!draggingRef.current) return;
+      const clientY = typeof e.clientY === 'number' ? e.clientY : (e.touches && e.touches[0]?.clientY) || 0;
+      const dy = startYRef.current - clientY;
+      const maxH = Math.max(120, (window.innerHeight || 800) - 120);
+      const minH = 64;
+      const newH = Math.max(minH, Math.min(maxH, startHeightRef.current + dy));
+      setConsoleHeight(newH);
+    }
+
+    function onUp() {
+      draggingRef.current = false;
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, []);
+
   // Ensure timer is set to the chosen interview duration when the component mounts
   // or when the duration prop changes. This guarantees the countdown begins
   // immediately for the full interview time chosen in the SetupModal.
@@ -291,11 +325,11 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
   async function runCode() {
     try {
       setIsRunning(true);
-      setConsoleOutput("Running...\n");
+      // Show only final output (no interim "Running...")
       const res = await fetch("/api/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: editorValue, language }),
+        body: JSON.stringify({ code: editorValue, language, stdin: customInput }),
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data?.ok === false) {
@@ -303,18 +337,18 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
         const formatted = errs.map((e: any) => `Line ${e.line}${e.column ? `:${e.column}` : ""} - ${e.message}`).join("\n");
         const fallback = data?.compileStderr ?? data?.stderr ?? data?.error ?? `Run failed (${res.status})`;
             setDiagnostics(errs ?? []);
-            setConsoleOutput((s) => s + (formatted || fallback));
+            setConsoleOutput(formatted || fallback);
         setConsoleVisible(true);
         return;
       }
 
       const out = data.stdout ?? data.compileStderr ?? data.stderr ?? "Run completed.";
       setDiagnostics([]);
-      setConsoleOutput((s) => s + out);
+      setConsoleOutput(out);
       setConsoleVisible(true);
     } catch (e) {
       console.error(e);
-      setConsoleOutput((s) => s + `Error: ${String(e)}`);
+      setConsoleOutput(`Error: ${String(e)}`);
       setConsoleVisible(true);
     } finally {
       setIsRunning(false);
@@ -324,11 +358,10 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
   async function submitSolution() {
     try {
       setIsRunning(true);
-      setConsoleOutput("Submitting...\n");
       const res = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: editorValue, language, sessionId: sessionIdRef.current }),
+        body: JSON.stringify({ code: editorValue, language, sessionId: sessionIdRef.current, stdin: customInput }),
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data?.ok === false) {
@@ -336,7 +369,7 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
         setDiagnostics(errs ?? []);
         const formatted = errs.map((e: any) => `Line ${e.line}${e.column ? `:${e.column}` : ""} - ${e.message}`).join("\n");
         const fallback = data?.compileStderr ?? data?.stderr ?? data?.error ?? `Submit failed (${res.status})`;
-        setConsoleOutput((s) => s + (formatted || fallback));
+        setConsoleOutput(formatted || fallback);
         setConsoleVisible(true);
         return;
       }
@@ -344,11 +377,11 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
       setDiagnostics([]);
       const success = data.result ?? data.details ?? "Submit successful (mock).";
       const out = data.stdout ?? data.compileStderr ?? data.stderr ?? "";
-      setConsoleOutput((s) => s + success + (out ? `\n${out}` : ""));
+      setConsoleOutput(success + (out ? `\n${out}` : ""));
       setConsoleVisible(true);
     } catch (e) {
       console.error(e);
-      setConsoleOutput((s) => s + `Error: ${String(e)}`);
+      setConsoleOutput(`Error: ${String(e)}`);
       setConsoleVisible(true);
     } finally {
       setIsRunning(false);
@@ -357,18 +390,7 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
   return (
     <div className="h-screen flex overflow-hidden relative">
-      <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
-        <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-full border border-white/5">
-          <div className={`w-2 h-2 rounded-full ${listening ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`}></div>
-          <span className="text-xs font-mono text-slate-300">{formatTimer()}</span>
-        </div>
-        <button
-          className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-500/20 transition"
-          onClick={handleEndSession}
-        >
-          End Session
-        </button>
-      </div>
+      {/* Header controls (timer + end session) moved into main header for alignment */}
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-[35%] flex flex-col border-r border-white/5 bg-slate-900/30">
@@ -481,17 +503,27 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
 
         <main className="flex-1 flex flex-col bg-[#1e1e1e] relative">
-          <div className="h-10 bg-[#1e1e1e] border-b border-[#333] flex items-center justify-between pl-4 pr-64 select-none">
+          <div className="h-10 bg-[#1e1e1e] border-b border-[#333] flex items-center justify-between pl-4 pr-4 select-none">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-white">solution.cpp</div>
             </div>
-            <div className="flex items-center gap-2">
-               <select className="bg-transparent text-xs text-slate-400 focus:outline-none border-none cursor-pointer">
+            <div className="flex items-center gap-3">
+               <select value={language} onChange={(e) => setLanguage(e.target.value)} className="bg-transparent text-xs text-slate-400 focus:outline-none border-none cursor-pointer">
                   <option>C++ 17</option>
                   <option>C++ 20</option>
                   <option>Java</option>
                   <option>Python 3</option>
               </select>
+              <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1 rounded-full border border-white/5">
+                <div className={`w-2 h-2 rounded-full ${listening ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`}></div>
+                <span className="text-xs font-mono text-slate-300">{formatTimer()}</span>
+              </div>
+              <button
+                className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded text-xs font-bold hover:bg-red-500/20 transition"
+                onClick={handleEndSession}
+              >
+                End Session
+              </button>
             </div>
           </div>
 
@@ -652,84 +684,109 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
               <p className="text-sm text-slate-400 max-w-xs text-center">Please explain your approach to the AI Agent to unlock the coding environment.</p>
             </div>
 
-            {/* Console panel */}
-            {consoleVisible && (
+            {/* Bottom console panel (draggable/expandable) */}
+            <div
+              className="absolute left-0 right-0 flex justify-center"
+              style={{ left: GUTTER_WIDTH + 16, right: 16, bottom: 0, pointerEvents: 'auto' }}
+            >
               <div
-                className="absolute bottom-20 rounded p-0 text-sm font-mono text-slate-200"
-                style={{ left: GUTTER_WIDTH + 16, right: 16, maxHeight: 260 }}
+                className="w-full"
+                style={{ maxWidth: 'calc(100% - 0px)', boxSizing: 'border-box' }}
               >
-                <div className="bg-black/80 border border-white/10 rounded-t px-3 py-2 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="text-sm font-semibold">Console</div>
-                    <div className="text-xs text-slate-400">Output</div>
+                <div
+                  className={`transition-all duration-150 ${consoleVisible ? 'rounded-t' : 'rounded-t'} `}
+                  style={{
+                    height: consoleVisible ? consoleHeight : 36,
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxSizing: 'border-box'
+                  }}
+                >
+                  {/* draggable handle / collapsed bar */}
+                  <div
+                    onMouseDown={(e) => {
+                      draggingRef.current = true;
+                      startYRef.current = e.clientY;
+                      startHeightRef.current = consoleHeight;
+                    }}
+                    onTouchStart={(e) => {
+                      draggingRef.current = true;
+                      startYRef.current = e.touches[0]?.clientY || 0;
+                      startHeightRef.current = consoleHeight;
+                    }}
+                    className="bg-black/80 border border-white/10 px-3 py-2 flex items-center justify-between cursor-row-resize"
+                    style={{ userSelect: 'none' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="text-sm font-semibold text-slate-200">Console</div>
+                      <div className="text-xs text-slate-400">Output</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setConsoleOutput(''); setDiagnostics([]); }}
+                        className="text-xs text-slate-400 hover:text-white px-2"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        onClick={() => { navigator.clipboard?.writeText(consoleOutput).catch(() => {}); }}
+                        className="text-xs text-slate-400 hover:text-white px-2"
+                      >
+                        Copy
+                      </button>
+                      <button onClick={() => setConsoleVisible((v) => !v)} className="text-xs text-slate-400 hover:text-white px-2">{consoleVisible ? 'Collapse' : 'Expand'}</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { setConsoleOutput(''); setDiagnostics([]); }}
-                      className="text-xs text-slate-400 hover:text-white px-2"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      onClick={() => { navigator.clipboard?.writeText(consoleOutput).catch(() => {}); }}
-                      className="text-xs text-slate-400 hover:text-white px-2"
-                    >
-                      Copy
-                    </button>
-                    <button onClick={() => setConsoleVisible(false)} className="text-xs text-slate-400 hover:text-white px-2">Close</button>
-                  </div>
-                </div>
 
-                <div className="bg-black/90 border-x border-white/10 p-3 max-h-56 overflow-auto">
-                  {diagnostics && diagnostics.length > 0 ? (
-                    // Show only errors when present
-                    <div>
-                      <div className="text-sm font-semibold text-rose-300 mb-2">Errors</div>
-                      <div className="bg-transparent rounded p-1" style={{ maxHeight: 340, overflow: 'auto' }}>
-                        {diagnostics.map((d, idx) => (
-                          <div key={idx} className="px-2 py-2 hover:bg-white/5 cursor-pointer rounded" onClick={() => {
-                            const line = Math.max(1, Number(d.line) || 1);
-                            const la = editorRef.current as HTMLTextAreaElement | null;
-                            if (la) {
-                              const lineHeight = 1.5 * 13;
-                              la.scrollTop = Math.max(0, (line - 1) * lineHeight);
-                              if (preRef.current) (preRef.current as HTMLElement).scrollTop = la.scrollTop;
-                              if (gutterRef.current) gutterRef.current.scrollTop = la.scrollTop;
-                              const lines = (editorValue || '').split('\n');
-                              let pos = 0;
-                              for (let i = 0; i < line - 1 && i < lines.length; i++) pos += lines[i].length + 1;
-                              la.focus();
-                              la.setSelectionRange(pos, pos);
-                            }
-                          }}>
-                            <div className="text-xs text-rose-300">Line {d.line}{d.column ? `:${d.column}` : ''}</div>
-                            <div className="text-sm text-slate-200">{d.message}</div>
-                          </div>
-                        ))}
+                  {/* content area */}
+                  <div style={{ flex: 1, background: 'rgba(0,0,0,0.9)', borderLeft: '1px solid rgba(255,255,255,0.06)', borderRight: '1px solid rgba(255,255,255,0.06)' }} className="overflow-auto">
+                    {diagnostics && diagnostics.length > 0 ? (
+                      <div className="p-3">
+                        <div className="text-sm font-semibold text-rose-300 mb-2">Errors</div>
+                        <div className="bg-transparent rounded p-1" style={{ maxHeight: 340, overflow: 'auto' }}>
+                          {diagnostics.map((d, idx) => (
+                            <div key={idx} className="px-2 py-2 hover:bg-white/5 cursor-pointer rounded" onClick={() => {
+                              const line = Math.max(1, Number(d.line) || 1);
+                              const la = editorRef.current as HTMLTextAreaElement | null;
+                              if (la) {
+                                const lineHeight = 1.5 * 13;
+                                la.scrollTop = Math.max(0, (line - 1) * lineHeight);
+                                if (preRef.current) (preRef.current as HTMLElement).scrollTop = la.scrollTop;
+                                if (gutterRef.current) gutterRef.current.scrollTop = la.scrollTop;
+                                const lines = (editorValue || '').split('\n');
+                                let pos = 0;
+                                for (let i = 0; i < line - 1 && i < lines.length; i++) pos += lines[i].length + 1;
+                                la.focus();
+                                la.setSelectionRange(pos, pos);
+                              }
+                            }}>
+                              <div className="text-xs text-rose-300">Line {d.line}{d.column ? `:${d.column}` : ''}</div>
+                              <div className="text-sm text-slate-200">{d.message}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    // No errors: show output prominently
-                    <div>
-                      <div className="text-xs text-slate-400 mb-2">Output</div>
-                      <pre className="whitespace-pre-wrap text-xs bg-transparent p-2 rounded" style={{ minHeight: 64 }}>{consoleOutput || '— No output —'}</pre>
-                    </div>
-                  )}
-                </div>
+                    ) : (
+                      <div className="p-3">
+                        <div className="text-xs text-slate-400 mb-2">Output</div>
+                        <pre className="whitespace-pre-wrap text-xs bg-transparent p-2 rounded" style={{ minHeight: 64 }}>{consoleOutput || '— No output —'}</pre>
+                      </div>
+                    )}
+                  </div>
 
-                <div className="bg-black/80 border border-white/10 rounded-b px-3 py-2 text-xs text-slate-400">Tip: Click an error to jump to that line.</div>
+                  <div className="bg-black/80 border border-white/10 px-3 py-2 text-xs text-slate-400">Tip: Click an error to jump to that line.</div>
+                </div>
               </div>
-            )}
+            </div>
           </div>
 
           <style jsx>{`
             :global(.error-underline) {
-              text-decoration: underline wavy #ff6b6b;
+              text-decoration-line: underline;
+              text-decoration-style: solid;
+              text-decoration-color: #ff4d4f;
               text-decoration-thickness: 2px;
-              /* stronger visible underline */
-              box-shadow: inset 0 -3px 0 rgba(255,107,107,0.95);
-              border-radius: 2px;
-              padding-bottom: 1px;
             }
             /* Syntax token colors */
             :global(.tok-keyword) { color: #c792ea; font-weight: 600; }
@@ -746,15 +803,27 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
             .gutter-line { line-height: 1.5; height: 1.5em; padding: 0 6px; text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace; }
           `}</style>
 
+          {/* Custom input (toggleable) */}
+          {showCustomInput && (
+            <div className="px-4 pb-2" style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
+              <div className="text-xs text-slate-400 mb-1">Custom Input (stdin)</div>
+              <textarea
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                placeholder="Enter input passed to your program (stdin)..."
+                className="w-full bg-slate-800 border border-white/5 rounded p-2 text-xs text-white resize-none"
+                rows={4}
+              />
+            </div>
+          )}
+
           <div className="h-12 bg-[#1e1e1e] border-t border-[#333] flex items-center justify-between px-4 shrink-0">
-            <button onClick={() => setConsoleVisible((v) => !v)} className="text-xs text-slate-400 hover:text-white flex items-center gap-2">Console</button>
+
             <div className="flex items-center gap-3">
-              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="bg-transparent text-xs text-slate-400 focus:outline-none border-none cursor-pointer">
-                  <option>C++ 17</option>
-                  <option>C++ 20</option>
-                  <option>Java</option>
-                  <option>Python 3</option>
-              </select>
+              <button onClick={() => setConsoleVisible((v) => !v)} className="text-xs text-slate-400 hover:text-white flex items-center gap-2">Console</button>
+              <button onClick={() => setShowCustomInput((s) => !s)} className="text-xs text-slate-400 hover:text-white flex items-center gap-2">Input</button>
+            </div>
+            <div className="flex items-center gap-3">
               <button onClick={runCode} disabled={isRunning} className="px-4 py-1.5 rounded text-xs font-semibold text-slate-300 hover:bg-white/5 border border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed">Run Code</button>
               <button onClick={submitSolution} disabled={isRunning} className="px-4 py-1.5 rounded text-xs font-semibold bg-green-600 text-white hover:bg-green-500 transition shadow-lg shadow-green-500/10 disabled:opacity-50 disabled:cursor-not-allowed">Submit</button>
             </div>
