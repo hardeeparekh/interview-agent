@@ -47,6 +47,28 @@ type Props = {
   onEnd?: () => void;
 };
 
+const FIXED_THREE_SUM_QUESTION = {
+  title: "3Sum",
+  description:
+    'Given an integer array nums, return all the triplets [nums[i], nums[j], nums[k]] such that i != j, i != k, and j != k, and nums[i] + nums[j] + nums[k] == 0. The solution set must not contain duplicate triplets.\n\nInput format for this editor:\n- First line: integer n\n- Second line: n space-separated integers\n\nOutput format for deterministic judging:\n- Print each unique triplet as "a b c" (values inside each triplet in nondecreasing order)\n- Print triplets in lexicographic order, one triplet per line\n- If no triplet exists, print []',
+  examples: [
+    { input: "6\n-1 0 1 2 -1 -4", output: "-1 -1 2\n-1 0 1" },
+    { input: "3\n0 1 1", output: "[]" },
+    { input: "5\n0 0 0 0 0", output: "0 0 0" },
+  ],
+  difficulty: "Medium",
+  prompt:
+    "Given an integer array nums, return all unique triplets whose sum is 0. Do not return duplicate triplets.",
+};
+
+function getDefaultThreeSumTestCases() {
+  return (FIXED_THREE_SUM_QUESTION.examples || []).slice(0, 3).map((e: any) => ({
+    input: String(e.input ?? ""),
+    expected: String(e.output ?? e.expected ?? ""),
+    custom: false,
+  }));
+}
+
 export default function EditorWorkspace({ company, topic, duration, excludeTopics, onEnd }: Props) {
   const [unlocked, setUnlocked] = useState(false);
   const [agentText, setAgentText] = useState("\"Connecting to session...\"");
@@ -58,7 +80,8 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
   const startedAtMsRef = useRef<number>(Date.now());
   const endedRef = useRef(false);
   const startedInterviewKeyRef = useRef<string | null>(null);
-
+  const [activeBottomTab, setActiveBottomTab] = useState<"testcase" | "result">("testcase");
+  const [submissionStatus, setSubmissionStatus] = useState<"accepted" | "wrong" | "compile" | null>(null);
   // Agent State
   const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
   const [interviewState, setInterviewState] = useState<'intro' | 'approach' | 'coding' | 'finished'>('intro');
@@ -69,6 +92,15 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
   const [consoleVisible, setConsoleVisible] = useState(false);
   const [consoleOutput, setConsoleOutput] = useState<string>("");
   const [isRunning, setIsRunning] = useState(false);
+  const [testCases, setTestCases] = useState<{ input: string; expected: string; custom?: boolean }[]>([]);
+  const [testResults, setTestResults] = useState<{ input: string; expected: string; output?: string; passed: boolean; error?: string }[]>([]);
+  const [currentTestIndex, setCurrentTestIndex] = useState<number>(0);
+  const [consoleHeight, setConsoleHeight] = useState<number>(160);
+  const draggingRef = useRef(false);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
+  const [customInput, setCustomInput] = useState<string>("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
   const [diagnostics, setDiagnostics] = useState<{ line: number; column?: number; message: string }[]>([]);
   const preRef = useRef<HTMLElement | null>(null);
   const gutterRef = useRef<HTMLDivElement | null>(null);
@@ -86,7 +118,11 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
     setUnlocked(false);
     setMessages([]);
     setInterviewState("intro");
-    setCurrentQuestion(null);
+    setCurrentQuestion(FIXED_THREE_SUM_QUESTION);
+    setTestCases(getDefaultThreeSumTestCases());
+    setCurrentTestIndex(0);
+    setTestResults([]);
+    setSubmissionStatus(null);
     setAgentText(`"Connecting to AI Interviewer..."`);
 
     void startInterview();
@@ -100,7 +136,7 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
   async function sendMessageToAgent(content: string, isSystemInit = false) {
     if (!content.trim()) return;
-    
+
     setIsAgentLoading(true);
     const newMessages = isSystemInit ? [] : [...messages, { role: 'user', content }];
     setMessages(newMessages);
@@ -113,7 +149,7 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
         body: JSON.stringify({
           messages: newMessages,
           state: interviewState,
-          currentQuestion,
+          currentQuestion: currentQuestion ?? FIXED_THREE_SUM_QUESTION,
           code: editorValue, // Send current code to agent
           company,
           topic,
@@ -132,14 +168,10 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
         setMessages((prev) => [...prev, { role: 'model', content: combined }]);
         return;
       }
-      
+
       if (data.message) {
         setAgentText(`"${data.message}"`);
         setMessages(prev => [...prev, { role: 'model', content: data.message }]);
-      }
-
-      if (data.newQuestion) {
-        setCurrentQuestion(data.newQuestion);
       }
 
       if (data.nextState && data.nextState !== interviewState) {
@@ -220,6 +252,34 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
     return () => clearInterval(t);
   }, []);
 
+  // Handle drag-to-resize for console panel
+  useEffect(() => {
+    function onMove(e: any) {
+      if (!draggingRef.current) return;
+      const clientY = typeof e.clientY === 'number' ? e.clientY : (e.touches && e.touches[0]?.clientY) || 0;
+      const dy = startYRef.current - clientY;
+      const maxH = Math.max(120, (window.innerHeight || 800) - 120);
+      const minH = 64;
+      const newH = Math.max(minH, Math.min(maxH, startHeightRef.current + dy));
+      setConsoleHeight(newH);
+    }
+
+    function onUp() {
+      draggingRef.current = false;
+    }
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onMove, { passive: false });
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, []);
+
   // Ensure timer is set to the chosen interview duration when the component mounts
   // or when the duration prop changes. This guarantees the countdown begins
   // immediately for the full interview time chosen in the SetupModal.
@@ -285,36 +345,175 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
     const hrs = Math.floor(timerSeconds / 3600);
     const mins = Math.floor((timerSeconds % 3600) / 60);
     const secs = timerSeconds % 60;
-    return `${hrs.toString().padStart(2,'0')}:${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
 
   async function runCode() {
+    // If there are test cases, run them via the local runner
+    if (testCases && testCases.length > 0) {
+      await runTests(false);
+      return;
+    }
+
     try {
       setIsRunning(true);
-      setConsoleOutput("Running...\n");
-      const res = await fetch("/api/run", {
+      // Show only final output (no interim "Running...")
+      const res = await fetch("/api/judge0", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: editorValue, language }),
+        body: JSON.stringify({ code: editorValue, language, stdin: customInput }),
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data?.ok === false) {
         const errs = data?.errors ?? (data?.error ? [{ line: 0, column: 0, message: data.error }] : []);
         const formatted = errs.map((e: any) => `Line ${e.line}${e.column ? `:${e.column}` : ""} - ${e.message}`).join("\n");
         const fallback = data?.compileStderr ?? data?.stderr ?? data?.error ?? `Run failed (${res.status})`;
-            setDiagnostics(errs ?? []);
-            setConsoleOutput((s) => s + (formatted || fallback));
+        setDiagnostics(errs ?? []);
+        setConsoleOutput(formatted || fallback);
         setConsoleVisible(true);
         return;
       }
 
       const out = data.stdout ?? data.compileStderr ?? data.stderr ?? "Run completed.";
       setDiagnostics([]);
-      setConsoleOutput((s) => s + out);
+      setConsoleOutput(out);
       setConsoleVisible(true);
     } catch (e) {
       console.error(e);
-      setConsoleOutput((s) => s + `Error: ${String(e)}`);
+      setConsoleOutput(`Error: ${String(e)}`);
+      setConsoleVisible(true);
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  function normalizeOutput(s: string | undefined) {
+    if (s == null) return "";
+    return String(s).replace(/\r\n/g, "\n").trim().replace(/\s+/g, " ");
+  }
+
+  async function runTests(useJudge: boolean) {
+    setTestResults([]);
+    const results: any[] = [];
+    for (let i = 0; i < testCases.length; i++) {
+      const tc = testCases[i];
+      try {
+        const url = useJudge ? '/api/judge0' : '/api/judge0';
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: editorValue, language, stdin: tc.input }),
+        });
+        const data = await res.json().catch(() => ({} as any));
+        if (!res.ok || data?.ok === false) {
+          const err = data?.error ?? data?.compileStderr ?? data?.stderr ?? `Run failed (${res.status})`;
+          results.push({ input: tc.input, expected: tc.expected, output: undefined, passed: false, error: String(err) });
+          setTestResults([...results]);
+          continue;
+        }
+
+        const out = normalizeOutput(data.stdout ?? data.runStdout ?? data.compileStderr ?? data.stderr ?? "");
+        const expect = normalizeOutput(tc.expected);
+        const passed = out === expect;
+        results.push({ input: tc.input, expected: tc.expected, output: out, passed, error: undefined });
+        setTestResults([...results]);
+      } catch (e) {
+        results.push({ input: tc.input, expected: tc.expected, output: undefined, passed: false, error: String(e) });
+        setTestResults([...results]);
+      }
+    }
+
+    const passedCount = results.filter(r => r.passed).length;
+
+    if (results.some(r => r.error)) {
+      setSubmissionStatus("compile");
+    } else if (passedCount === results.length) {
+      setSubmissionStatus("accepted");
+    } else {
+      setSubmissionStatus("wrong");
+    }
+
+    setActiveBottomTab("result");
+
+    const summary = `Tests: ${passedCount}/${results.length} passed`;
+    const detail = results.map((r, idx) => `#${idx + 1} - ${r.passed ? 'PASS' : 'FAIL'} - expected: ${r.expected} got: ${r.output ?? r.error ?? ''}`).join("\n");
+    setConsoleOutput(`${summary}\n\n${detail}`);
+    setConsoleVisible(true);
+  }
+
+  async function runCase(useJudge: boolean) {
+    const idx = currentTestIndex;
+    if (idx < 0 || idx >= testCases.length) return;
+    const tc = testCases[idx];
+    try {
+      const url = useJudge ? '/api/judge0' : '/api/judge0';
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: editorValue, language, stdin: tc.input }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data?.ok === false) {
+        const err = data?.error ?? data?.compileStderr ?? data?.stderr ?? `Run failed (${res.status})`;
+        const r = { input: tc.input, expected: tc.expected, output: undefined, passed: false, error: String(err) };
+        const next = [...testResults];
+        while (next.length <= idx) next.push(undefined as any); next[idx] = r; setTestResults(next);
+
+        setConsoleOutput(String(err)); setConsoleVisible(true);
+        setActiveBottomTab("result");
+        return;
+      }
+      const out = normalizeOutput(data.stdout ?? data.runStdout ?? data.compileStderr ?? data.stderr ?? '');
+      const expect = normalizeOutput(tc.expected);
+      const passed = out === expect;
+      const r = { input: tc.input, expected: tc.expected, output: out, passed, error: undefined };
+      const next = [...testResults]; next[idx] = r; setTestResults(next);
+      setConsoleOutput(`${passed ? 'PASS' : 'FAIL'}\n\nExpected: ${tc.expected}\nGot: ${out}`);
+      setConsoleVisible(true);
+      setActiveBottomTab("result");
+    } catch (e) {
+      const r = { input: tc.input, expected: tc.expected, output: undefined, passed: false, error: String(e) };
+      const next = [...testResults];
+      while (next.length <= idx) next.push(undefined as any); next[idx] = r;
+
+      setTestResults(next);
+      setConsoleOutput(String(e)); setConsoleVisible(true);
+      setActiveBottomTab("result");
+    }
+  }
+
+  async function runWithJudge0() {
+    // If we have test cases configured, run them via Judge0
+    if (testCases && testCases.length > 0) {
+      await runTests(true);
+      return;
+    }
+
+    try {
+      setIsRunning(true);
+      const res = await fetch('/api/judge0', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: editorValue, language, stdin: customInput }),
+      });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok || data?.ok === false) {
+        const errs = data?.errors ?? (data?.error ? [{ line: 0, column: 0, message: data.error }] : []);
+        const formatted = errs.map((e: any) => `Line ${e.line}${e.column ? `:${e.column}` : ""} - ${e.message}`).join("\n");
+        const fallback = data?.compileStderr ?? data?.stderr ?? data?.error ?? `Run failed (${res.status})`;
+        setDiagnostics(errs ?? []);
+        setConsoleOutput(formatted || fallback);
+        setConsoleVisible(true);
+        return;
+      }
+
+      const out = data.stdout ?? data.compileStderr ?? data.stderr ?? "Run completed.";
+      setDiagnostics([]);
+      setConsoleOutput(out);
+      setConsoleVisible(true);
+    } catch (e) {
+      console.error(e);
+      setConsoleOutput(`Error: ${String(e)}`);
       setConsoleVisible(true);
     } finally {
       setIsRunning(false);
@@ -324,11 +523,10 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
   async function submitSolution() {
     try {
       setIsRunning(true);
-      setConsoleOutput("Submitting...\n");
       const res = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: editorValue, language, sessionId: sessionIdRef.current }),
+        body: JSON.stringify({ code: editorValue, language, sessionId: sessionIdRef.current, stdin: customInput }),
       });
       const data = await res.json().catch(() => ({} as any));
       if (!res.ok || data?.ok === false) {
@@ -336,7 +534,7 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
         setDiagnostics(errs ?? []);
         const formatted = errs.map((e: any) => `Line ${e.line}${e.column ? `:${e.column}` : ""} - ${e.message}`).join("\n");
         const fallback = data?.compileStderr ?? data?.stderr ?? data?.error ?? `Submit failed (${res.status})`;
-        setConsoleOutput((s) => s + (formatted || fallback));
+        setConsoleOutput(formatted || fallback);
         setConsoleVisible(true);
         return;
       }
@@ -344,11 +542,11 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
       setDiagnostics([]);
       const success = data.result ?? data.details ?? "Submit successful (mock).";
       const out = data.stdout ?? data.compileStderr ?? data.stderr ?? "";
-      setConsoleOutput((s) => s + success + (out ? `\n${out}` : ""));
+      setConsoleOutput(success + (out ? `\n${out}` : ""));
       setConsoleVisible(true);
     } catch (e) {
       console.error(e);
-      setConsoleOutput((s) => s + `Error: ${String(e)}`);
+      setConsoleOutput(`Error: ${String(e)}`);
       setConsoleVisible(true);
     } finally {
       setIsRunning(false);
@@ -357,18 +555,7 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
   return (
     <div className="h-screen flex overflow-hidden relative">
-      <div className="fixed top-4 right-4 z-50 flex items-center gap-3">
-        <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-full border border-white/5">
-          <div className={`w-2 h-2 rounded-full ${listening ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`}></div>
-          <span className="text-xs font-mono text-slate-300">{formatTimer()}</span>
-        </div>
-        <button
-          className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-500/20 transition"
-          onClick={handleEndSession}
-        >
-          End Session
-        </button>
-      </div>
+      {/* Header controls (timer + end session) moved into main header for alignment */}
 
       <div className="flex-1 flex overflow-hidden">
         <aside className="w-[35%] flex flex-col border-r border-white/5 bg-slate-900/30">
@@ -385,18 +572,18 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
             <div className="flex-1 flex flex-col items-center justify-center">
               <div id="voice-viz" className={`flex items-center gap-1 h-12 mb-4 ${listening ? 'speaking' : ''}`}>
-                <div className="wave-bar" style={{animationDelay: '0.0s'}}></div>
-                <div className="wave-bar" style={{animationDelay: '0.1s'}}></div>
-                <div className="wave-bar" style={{animationDelay: '0.2s'}}></div>
-                <div className="wave-bar" style={{animationDelay: '0.3s'}}></div>
-                <div className="wave-bar" style={{animationDelay: '0.1s'}}></div>
+                <div className="wave-bar" style={{ animationDelay: '0.0s' }}></div>
+                <div className="wave-bar" style={{ animationDelay: '0.1s' }}></div>
+                <div className="wave-bar" style={{ animationDelay: '0.2s' }}></div>
+                <div className="wave-bar" style={{ animationDelay: '0.3s' }}></div>
+                <div className="wave-bar" style={{ animationDelay: '0.1s' }}></div>
               </div>
               <p id="agent-text" className="text-center text-sm text-slate-200 font-medium leading-relaxed">{agentText}</p>
             </div>
 
             <div className="mt-4 flex gap-2 justify-center">
               <button id="mic-btn" className={`w-10 h-10 rounded-full ${listening ? 'bg-blue-600' : 'bg-slate-700'} hover:bg-blue-500 flex items-center justify-center transition shadow-lg shadow-blue-500/20`} onClick={() => setListening((s) => !s)}>
-                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+                <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" /><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" /></svg>
               </button>
               <button onClick={simulateUnlock} className="px-4 py-2 rounded-full border border-white/10 text-xs font-semibold hover:bg-white/5 transition">I'm Ready to Code</button>
             </div>
@@ -419,13 +606,13 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
                 </div>
               </div>
             )}
-            
+
             {currentQuestion ? (
               <>
                 <h2 className="text-xl font-bold mb-4">{currentQuestion.title}</h2>
                 <div className="prose prose-invert prose-sm text-slate-300">
                   <p>{currentQuestion.description || currentQuestion.prompt}</p>
-                  
+
                   {currentQuestion.examples && Array.isArray(currentQuestion.examples) && currentQuestion.examples.map((ex: any, i: number) => (
                     <div key={i} className="bg-slate-800/50 p-4 rounded-lg border border-white/5 my-4">
                       <p className="font-mono text-xs text-slate-400 mb-1">Example {i + 1}:</p>
@@ -433,6 +620,8 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
                       <p className="font-mono text-sm">Output: {ex.output}</p>
                     </div>
                   ))}
+
+                  {/* Testcases moved to right-side panel */}
 
                   {currentQuestion.constraints && (
                     <>
@@ -453,7 +642,7 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
           {/* Chat Input Area */}
           <div className="p-4 border-t border-white/5 bg-slate-900/50">
-            <form 
+            <form
               onSubmit={(e) => {
                 e.preventDefault();
                 sendMessageToAgent(userInput);
@@ -468,8 +657,8 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
                 className="flex-1 bg-slate-800 border border-white/10 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                 disabled={isAgentLoading}
               />
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={isAgentLoading || !userInput.trim()}
                 className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -481,21 +670,31 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
 
         <main className="flex-1 flex flex-col bg-[#1e1e1e] relative">
-          <div className="h-10 bg-[#1e1e1e] border-b border-[#333] flex items-center justify-between pl-4 pr-64 select-none">
+          <div className="h-10 bg-[#1e1e1e] border-b border-[#333] flex items-center justify-between pl-4 pr-4 select-none">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-white">solution.cpp</div>
             </div>
-            <div className="flex items-center gap-2">
-               <select className="bg-transparent text-xs text-slate-400 focus:outline-none border-none cursor-pointer">
-                  <option>C++ 17</option>
-                  <option>C++ 20</option>
-                  <option>Java</option>
-                  <option>Python 3</option>
+            <div className="flex items-center gap-3">
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="bg-transparent text-xs text-slate-400 focus:outline-none border-none cursor-pointer">
+                <option>C++ 17</option>
+                <option>C++ 20</option>
+                <option>Java</option>
+                <option>Python 3</option>
               </select>
+              <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1 rounded-full border border-white/5">
+                <div className={`w-2 h-2 rounded-full ${listening ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`}></div>
+                <span className="text-xs font-mono text-slate-300">{formatTimer()}</span>
+              </div>
+              <button
+                className="bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1 rounded text-xs font-bold hover:bg-red-500/20 transition"
+                onClick={handleEndSession}
+              >
+                End Session
+              </button>
             </div>
           </div>
 
-            <div className="flex-1 relative" style={{ minHeight: 0 }}>
+          <div className="flex-1 relative pb-[340px]" style={{ minHeight: 0 }}>
             <div className="absolute inset-0 w-full h-full flex">
               <div ref={gutterRef} className="gutter" style={{ width: GUTTER_WIDTH }}>
                 {(() => {
@@ -506,121 +705,123 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
                 })()}
               </div>
 
-              <div style={{ flex: 1, position: 'relative' }}>
+              <div style={{ flex: 1, position: 'relative', paddingRight: 0 }}>
                 <pre
                   ref={preRef as any}
                   aria-hidden
                   className="pointer-events-none whitespace-pre-wrap text-white font-mono p-6 m-0 h-full overflow-auto"
                   style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace', marginLeft: 0 }}
-                  dangerouslySetInnerHTML={{ __html: (() => {
-                    const esc = (s: string) => (s || "").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-                    const lines = (editorValue || '').split('\n');
-                    const diagByLine: Record<number, { column?: number; message: string }[]> = {};
-                    for (const d of diagnostics || []) {
-                      const ln = Math.max(1, Number(d.line) || 1);
-                      diagByLine[ln] = diagByLine[ln] || [];
-                      diagByLine[ln].push({ column: d.column, message: d.message });
-                    }
+                  dangerouslySetInnerHTML={{
+                    __html: (() => {
+                      const esc = (s: string) => (s || "").replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                      const lines = (editorValue || '').split('\n');
+                      const diagByLine: Record<number, { column?: number; message: string }[]> = {};
+                      for (const d of diagnostics || []) {
+                        const ln = Math.max(1, Number(d.line) || 1);
+                        diagByLine[ln] = diagByLine[ln] || [];
+                        diagByLine[ln].push({ column: d.column, message: d.message });
+                      }
 
-                    const keywords = new Set((`abstract as assert break case catch class const continue default delete do else enum export extends false final finally for function goto if implements import in instanceof interface let new null package private protected public return super switch synchronized this throw throws transient true try typeof var void volatile while with yield await def`).split(/\s+/));
-                    const builtins = new Set(["cout","cin","std","printf","println","System","out","err","len","range"]);
+                      const keywords = new Set((`abstract as assert break case catch class const continue default delete do else enum export extends false final finally for function goto if implements import in instanceof interface let new null package private protected public return super switch synchronized this throw throws transient true try typeof var void volatile while with yield await def`).split(/\s+/));
+                      const builtins = new Set(["cout", "cin", "std", "printf", "println", "System", "out", "err", "len", "range"]);
 
-                    function tokenizeLine(line: string) {
-                      const tokens: { type: string; text: string; start: number; end: number }[] = [];
-                      let i = 0;
-                      const L = line.length;
-                      while (i < L) {
-                        const ch = line[i];
-                        // Comments
-                        if (ch === '/' && i + 1 < L && line[i+1] === '/') { tokens.push({ type: 'comment', text: line.slice(i), start: i, end: L }); break; }
-                        if (ch === '/' && i + 1 < L && line[i+1] === '*') { const end = line.indexOf('*/', i+2); const e = end >= 0 ? end+2 : L; tokens.push({ type: 'comment', text: line.slice(i, e), start: i, end: e }); i = e; continue; }
-                        if (ch === '#') { tokens.push({ type: 'comment', text: line.slice(i), start: i, end: L }); break; }
+                      function tokenizeLine(line: string) {
+                        const tokens: { type: string; text: string; start: number; end: number }[] = [];
+                        let i = 0;
+                        const L = line.length;
+                        while (i < L) {
+                          const ch = line[i];
+                          // Comments
+                          if (ch === '/' && i + 1 < L && line[i + 1] === '/') { tokens.push({ type: 'comment', text: line.slice(i), start: i, end: L }); break; }
+                          if (ch === '/' && i + 1 < L && line[i + 1] === '*') { const end = line.indexOf('*/', i + 2); const e = end >= 0 ? end + 2 : L; tokens.push({ type: 'comment', text: line.slice(i, e), start: i, end: e }); i = e; continue; }
+                          if (ch === '#') { tokens.push({ type: 'comment', text: line.slice(i), start: i, end: L }); break; }
 
-                        // Strings
-                        if (ch === '"' || ch === '\'' || ch === '`') {
-                          const quote = ch; let j = i+1; let closed = false;
-                          while (j < L) {
-                            if (line[j] === '\\') { j += 2; continue; }
-                            if (line[j] === quote) { j++; closed = true; break; }
-                            j++;
+                          // Strings
+                          if (ch === '"' || ch === '\'' || ch === '`') {
+                            const quote = ch; let j = i + 1; let closed = false;
+                            while (j < L) {
+                              if (line[j] === '\\') { j += 2; continue; }
+                              if (line[j] === quote) { j++; closed = true; break; }
+                              j++;
+                            }
+                            tokens.push({ type: 'string', text: line.slice(i, j), start: i, end: j }); i = j; continue;
                           }
-                          tokens.push({ type: 'string', text: line.slice(i, j), start: i, end: j }); i = j; continue;
-                        }
 
-                        // Numbers
-                        if (/[0-9]/.test(ch)) {
-                          let j = i+1; while (j < L && /[0-9\.xXabcdefABCDEF]/.test(line[j])) j++; tokens.push({ type: 'number', text: line.slice(i, j), start: i, end: j }); i = j; continue;
-                        }
-
-                        // Identifiers/keywords
-                        if (/[A-Za-z_]/.test(ch)) {
-                          let j = i+1; while (j < L && /[A-Za-z0-9_]/.test(line[j])) j++; const txt = line.slice(i, j); const t = keywords.has(txt) ? 'keyword' : (builtins.has(txt) ? 'builtin' : 'ident'); tokens.push({ type: t, text: txt, start: i, end: j }); i = j; continue;
-                        }
-
-                        // whitespace
-                        if (/\s/.test(ch)) { let j = i+1; while (j < L && /\s/.test(line[j])) j++; tokens.push({ type: 'whitespace', text: line.slice(i, j), start: i, end: j }); i = j; continue; }
-
-                        // punctuation
-                        tokens.push({ type: 'punct', text: ch, start: i, end: i+1 }); i++;
-                      }
-                      return tokens;
-                    }
-
-                    return lines.map((lnText, i) => {
-                      const ln = i + 1;
-                      const diags = diagByLine[ln] || [];
-                      const tokens = tokenizeLine(lnText);
-                      // build HTML from tokens
-                      let html = '';
-                      for (let k = 0; k < tokens.length; k++) {
-                        const tk = tokens[k];
-                        const content = esc(tk.text);
-                        let span = content;
-                        if (tk.type === 'string') span = `<span class=\"tok-string\">${content}</span>`;
-                        else if (tk.type === 'comment') span = `<span class=\"tok-comment\">${content}</span>`;
-                        else if (tk.type === 'number') span = `<span class=\"tok-number\">${content}</span>`;
-                        else if (tk.type === 'keyword') span = `<span class=\"tok-keyword\">${content}</span>`;
-                        else if (tk.type === 'builtin') span = `<span class=\"tok-builtin\">${content}</span>`;
-                        else if (tk.type === 'ident') span = `<span class=\"tok-ident\">${content}</span>`;
-                        else if (tk.type === 'punct') span = `<span class=\"tok-punct\">${content}</span>`;
-                        else span = content;
-                        html += span;
-                      }
-
-                      if (diags.length === 0) return `<div>${html || ' '}</div>`;
-
-                      // wrap error tokens
-                      let wrapped = html;
-                      for (const d of diags) {
-                        if (typeof d.column === 'number' && d.column > 0) {
-                          const col = Math.max(1, Math.min(d.column, lnText.length + 1));
-                          const pos = col - 1;
-                          // find token containing pos
-                          const tk = tokens.find(t => t.start <= pos && pos < t.end) || tokens[tokens.length-1];
-                          if (tk) {
-                            const before = esc(lnText.slice(0, tk.start));
-                            const after = esc(lnText.slice(tk.end));
-                            const tokenHtml = (() => {
-                              const raw = esc(tk.text);
-                              if (tk.type === 'string') return `<span class=\"tok-string\">${raw}</span>`;
-                              if (tk.type === 'comment') return `<span class=\"tok-comment\">${raw}</span>`;
-                              if (tk.type === 'number') return `<span class=\"tok-number\">${raw}</span>`;
-                              if (tk.type === 'keyword') return `<span class=\"tok-keyword\">${raw}</span>`;
-                              if (tk.type === 'builtin') return `<span class=\"tok-builtin\">${raw}</span>`;
-                              if (tk.type === 'ident') return `<span class=\"tok-ident\">${raw}</span>`;
-                              if (tk.type === 'punct') return `<span class=\"tok-punct\">${raw}</span>`;
-                              return raw;
-                            })();
-                            const wrappedTok = `<span class=\"error-underline\" title=\"${esc(d.message)}\">${tokenHtml}</span>`;
-                            wrapped = `${esc(lnText.slice(0, tk.start))}${wrappedTok}${esc(lnText.slice(tk.end))}`;
+                          // Numbers
+                          if (/[0-9]/.test(ch)) {
+                            let j = i + 1; while (j < L && /[0-9\.xXabcdefABCDEF]/.test(line[j])) j++; tokens.push({ type: 'number', text: line.slice(i, j), start: i, end: j }); i = j; continue;
                           }
-                        } else {
-                          wrapped = `<span class=\"error-underline\" title=\"${esc(diags.map(x => x.message).join('; '))}\">${html || ' '}</span>`;
+
+                          // Identifiers/keywords
+                          if (/[A-Za-z_]/.test(ch)) {
+                            let j = i + 1; while (j < L && /[A-Za-z0-9_]/.test(line[j])) j++; const txt = line.slice(i, j); const t = keywords.has(txt) ? 'keyword' : (builtins.has(txt) ? 'builtin' : 'ident'); tokens.push({ type: t, text: txt, start: i, end: j }); i = j; continue;
+                          }
+
+                          // whitespace
+                          if (/\s/.test(ch)) { let j = i + 1; while (j < L && /\s/.test(line[j])) j++; tokens.push({ type: 'whitespace', text: line.slice(i, j), start: i, end: j }); i = j; continue; }
+
+                          // punctuation
+                          tokens.push({ type: 'punct', text: ch, start: i, end: i + 1 }); i++;
                         }
+                        return tokens;
                       }
-                      return `<div>${wrapped}</div>`;
-                    }).join('');
-                  })() }}
+
+                      return lines.map((lnText, i) => {
+                        const ln = i + 1;
+                        const diags = diagByLine[ln] || [];
+                        const tokens = tokenizeLine(lnText);
+                        // build HTML from tokens
+                        let html = '';
+                        for (let k = 0; k < tokens.length; k++) {
+                          const tk = tokens[k];
+                          const content = esc(tk.text);
+                          let span = content;
+                          if (tk.type === 'string') span = `<span class=\"tok-string\">${content}</span>`;
+                          else if (tk.type === 'comment') span = `<span class=\"tok-comment\">${content}</span>`;
+                          else if (tk.type === 'number') span = `<span class=\"tok-number\">${content}</span>`;
+                          else if (tk.type === 'keyword') span = `<span class=\"tok-keyword\">${content}</span>`;
+                          else if (tk.type === 'builtin') span = `<span class=\"tok-builtin\">${content}</span>`;
+                          else if (tk.type === 'ident') span = `<span class=\"tok-ident\">${content}</span>`;
+                          else if (tk.type === 'punct') span = `<span class=\"tok-punct\">${content}</span>`;
+                          else span = content;
+                          html += span;
+                        }
+
+                        if (diags.length === 0) return `<div>${html || ' '}</div>`;
+
+                        // wrap error tokens
+                        let wrapped = html;
+                        for (const d of diags) {
+                          if (typeof d.column === 'number' && d.column > 0) {
+                            const col = Math.max(1, Math.min(d.column, lnText.length + 1));
+                            const pos = col - 1;
+                            // find token containing pos
+                            const tk = tokens.find(t => t.start <= pos && pos < t.end) || tokens[tokens.length - 1];
+                            if (tk) {
+                              const before = esc(lnText.slice(0, tk.start));
+                              const after = esc(lnText.slice(tk.end));
+                              const tokenHtml = (() => {
+                                const raw = esc(tk.text);
+                                if (tk.type === 'string') return `<span class=\"tok-string\">${raw}</span>`;
+                                if (tk.type === 'comment') return `<span class=\"tok-comment\">${raw}</span>`;
+                                if (tk.type === 'number') return `<span class=\"tok-number\">${raw}</span>`;
+                                if (tk.type === 'keyword') return `<span class=\"tok-keyword\">${raw}</span>`;
+                                if (tk.type === 'builtin') return `<span class=\"tok-builtin\">${raw}</span>`;
+                                if (tk.type === 'ident') return `<span class=\"tok-ident\">${raw}</span>`;
+                                if (tk.type === 'punct') return `<span class=\"tok-punct\">${raw}</span>`;
+                                return raw;
+                              })();
+                              const wrappedTok = `<span class=\"error-underline\" title=\"${esc(d.message)}\">${tokenHtml}</span>`;
+                              wrapped = `${esc(lnText.slice(0, tk.start))}${wrappedTok}${esc(lnText.slice(tk.end))}`;
+                            }
+                          } else {
+                            wrapped = `<span class=\"error-underline\" title=\"${esc(diags.map(x => x.message).join('; '))}\">${html || ' '}</span>`;
+                          }
+                        }
+                        return `<div>${wrapped}</div>`;
+                      }).join('');
+                    })()
+                  }}
                 />
 
                 <textarea
@@ -646,90 +847,212 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
 
             <div className={`logic-lock-overlay ${unlocked ? 'hidden' : ''}`}>
               <div className="w-16 h-16 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
               </div>
               <h3 className="text-lg font-bold text-white mb-2">Editor Locked</h3>
               <p className="text-sm text-slate-400 max-w-xs text-center">Please explain your approach to the AI Agent to unlock the coding environment.</p>
             </div>
+          </div>
+          {/* Bottom console panel (draggable/expandable) */}
+          {/* Bottom Panel */}
+          <div className="absolute left-0 right-0 bottom-12 bg-[#1e1e1e] border-t border-[#333]">
 
-            {/* Console panel */}
-            {consoleVisible && (
-              <div
-                className="absolute bottom-20 rounded p-0 text-sm font-mono text-slate-200"
-                style={{ left: GUTTER_WIDTH + 16, right: 16, maxHeight: 260 }}
+            {/* Tabs */}
+            <div className="flex items-center gap-6 px-4 py-2 border-b border-[#333] text-sm">
+
+              <button
+                onClick={() => setActiveBottomTab("testcase")}
+                className={`${activeBottomTab === "testcase"
+                    ? "text-green-400"
+                    : "text-slate-400"
+                  }`}
               >
-                <div className="bg-black/80 border border-white/10 rounded-t px-3 py-2 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="text-sm font-semibold">Console</div>
-                    <div className="text-xs text-slate-400">Output</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { setConsoleOutput(''); setDiagnostics([]); }}
-                      className="text-xs text-slate-400 hover:text-white px-2"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      onClick={() => { navigator.clipboard?.writeText(consoleOutput).catch(() => {}); }}
-                      className="text-xs text-slate-400 hover:text-white px-2"
-                    >
-                      Copy
-                    </button>
-                    <button onClick={() => setConsoleVisible(false)} className="text-xs text-slate-400 hover:text-white px-2">Close</button>
-                  </div>
-                </div>
+                Testcase
+              </button>
 
-                <div className="bg-black/90 border-x border-white/10 p-3 max-h-56 overflow-auto">
-                  {diagnostics && diagnostics.length > 0 ? (
-                    // Show only errors when present
-                    <div>
-                      <div className="text-sm font-semibold text-rose-300 mb-2">Errors</div>
-                      <div className="bg-transparent rounded p-1" style={{ maxHeight: 340, overflow: 'auto' }}>
-                        {diagnostics.map((d, idx) => (
-                          <div key={idx} className="px-2 py-2 hover:bg-white/5 cursor-pointer rounded" onClick={() => {
-                            const line = Math.max(1, Number(d.line) || 1);
-                            const la = editorRef.current as HTMLTextAreaElement | null;
-                            if (la) {
-                              const lineHeight = 1.5 * 13;
-                              la.scrollTop = Math.max(0, (line - 1) * lineHeight);
-                              if (preRef.current) (preRef.current as HTMLElement).scrollTop = la.scrollTop;
-                              if (gutterRef.current) gutterRef.current.scrollTop = la.scrollTop;
-                              const lines = (editorValue || '').split('\n');
-                              let pos = 0;
-                              for (let i = 0; i < line - 1 && i < lines.length; i++) pos += lines[i].length + 1;
-                              la.focus();
-                              la.setSelectionRange(pos, pos);
-                            }
-                          }}>
-                            <div className="text-xs text-rose-300">Line {d.line}{d.column ? `:${d.column}` : ''}</div>
-                            <div className="text-sm text-slate-200">{d.message}</div>
-                          </div>
-                        ))}
+              <button
+                onClick={() => setActiveBottomTab("result")}
+                className={`${activeBottomTab === "result"
+                    ? "text-green-400"
+                    : "text-slate-400"
+                  }`}
+              >
+                Test Result
+              </button>
+
+            </div>
+
+            {/* Content */}
+            <div className="p-4 max-h-[300px] overflow-auto">
+              {activeBottomTab === "testcase" && (
+
+                <div>
+
+                  {/* Case Tabs + Run Buttons */}
+                  <div className="flex items-center justify-between mb-4">
+
+                    <div className="flex gap-2">
+
+                      {testCases.map((_, i) => (
+
+                        <button
+                          key={i}
+                          onClick={() => setCurrentTestIndex(i)}
+                          className={`px-3 py-1 text-xs rounded ${currentTestIndex === i
+                              ? "bg-slate-700 text-white"
+                              : "bg-slate-800 text-slate-400"
+                            }`}
+                        >
+                          Case {i + 1}
+                        </button>
+
+
+                      ))}
+                      <button
+                        onClick={() => {
+                          const next = [...testCases, { input: "", expected: "", custom: true }];
+                          setTestCases(next);
+                          setCurrentTestIndex(next.length - 1);
+                        }}
+                        className="px-2 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <div className="flex gap-2">
+
+                      <button
+                        onClick={() => runCase(false)}
+                        className="px-3 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600"
+                      >
+                        Run Case
+                      </button>
+
+                      <button
+                        onClick={() => runTests(false)}
+                        className="px-3 py-1 text-xs rounded bg-slate-700 hover:bg-slate-600"
+                      >
+                        Run All
+                      </button>
+
+                    </div>
+
+                  </div>
+
+                  {/* Input */}
+                  <div className="mb-3">
+
+                    <div className="text-xs text-slate-400 mb-1">Input</div>
+
+                    {testCases[currentTestIndex]?.custom ? (
+
+                      <textarea
+                        value={testCases[currentTestIndex]?.input || ""}
+                        onChange={(e) => {
+                          const next = [...testCases];
+                          next[currentTestIndex] = {
+                            ...(next[currentTestIndex]),
+                            input: e.target.value,
+                          };
+                          setTestCases(next);
+                        }}
+                        className="w-full bg-slate-800 p-2 text-xs text-white rounded resize-none"
+                        rows={3}
+                      />
+
+                    ) : (
+
+                      <div className="bg-slate-800 p-3 rounded text-sm">
+                        {testCases[currentTestIndex]?.input}
                       </div>
-                    </div>
-                  ) : (
-                    // No errors: show output prominently
-                    <div>
-                      <div className="text-xs text-slate-400 mb-2">Output</div>
-                      <pre className="whitespace-pre-wrap text-xs bg-transparent p-2 rounded" style={{ minHeight: 64 }}>{consoleOutput || '— No output —'}</pre>
-                    </div>
-                  )}
+
+                    )}
+
+                  </div>
+
+                  {/* Expected */}
+
+                  <div>
+
+                    <div className="text-xs text-slate-400 mb-1">Expected</div>
+
+                    {testCases[currentTestIndex]?.custom ? (
+
+                      <textarea
+                        value={testCases[currentTestIndex]?.expected || ""}
+                        onChange={(e) => {
+                          const next = [...testCases];
+                          next[currentTestIndex] = {
+                            ...(next[currentTestIndex]),
+                            expected: e.target.value,
+                          };
+                          setTestCases(next);
+                        }}
+                        className="w-full bg-slate-800 p-2 text-xs text-white rounded resize-none"
+                        rows={2}
+                      />
+
+                    ) : (
+
+                      <div className="bg-slate-800 p-3 rounded text-sm">
+                        {testCases[currentTestIndex]?.expected}
+                      </div>
+
+                    )}
+
+                  </div>
+
                 </div>
 
-                <div className="bg-black/80 border border-white/10 rounded-b px-3 py-2 text-xs text-slate-400">Tip: Click an error to jump to that line.</div>
-              </div>
-            )}
+              )}
+
+              {activeBottomTab === "result" && (
+
+                <div>
+
+                  {submissionStatus === "compile" && (
+
+                    <div className="text-red-400 font-semibold mb-3">
+                      Compile Error
+                    </div>
+
+                  )}
+
+                  {submissionStatus === "wrong" && (
+
+                    <div className="text-red-400 font-semibold mb-3">
+                      Wrong Answer
+                    </div>
+
+                  )}
+
+                  {submissionStatus === "accepted" && (
+
+                    <div className="text-green-400 font-semibold mb-3">
+                      Accepted
+                    </div>
+
+                  )}
+
+                  <pre className="bg-slate-900 p-3 rounded text-xs whitespace-pre-wrap">
+                    {consoleOutput}
+                  </pre>
+
+                </div>
+
+              )}
+
+            </div>
+
           </div>
 
           <style jsx>{`
             :global(.error-underline) {
-              text-decoration: underline wavy #ff6b6b;
+              text-decoration-line: underline;
+              text-decoration-style: solid;
+              text-decoration-color: #ff4d4f;
               text-decoration-thickness: 2px;
-              /* stronger visible underline */
-              box-shadow: inset 0 -3px 0 rgba(255,107,107,0.95);
-              border-radius: 2px;
-              padding-bottom: 1px;
             }
             /* Syntax token colors */
             :global(.tok-keyword) { color: #c792ea; font-weight: 600; }
@@ -746,16 +1069,29 @@ export default function EditorWorkspace({ company, topic, duration, excludeTopic
             .gutter-line { line-height: 1.5; height: 1.5em; padding: 0 6px; text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace; }
           `}</style>
 
+          {/* Custom input (toggleable) */}
+          {showCustomInput && (
+            <div className="px-4 pb-2" style={{ background: '#1e1e1e', borderTop: '1px solid #333' }}>
+              <div className="text-xs text-slate-400 mb-1">Custom Input (stdin)</div>
+              <textarea
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                placeholder="Enter input passed to your program (stdin)..."
+                className="w-full bg-slate-800 border border-white/5 rounded p-2 text-xs text-white resize-none"
+                rows={4}
+              />
+            </div>
+          )}
+
           <div className="h-12 bg-[#1e1e1e] border-t border-[#333] flex items-center justify-between px-4 shrink-0">
-            <button onClick={() => setConsoleVisible((v) => !v)} className="text-xs text-slate-400 hover:text-white flex items-center gap-2">Console</button>
+
             <div className="flex items-center gap-3">
-              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="bg-transparent text-xs text-slate-400 focus:outline-none border-none cursor-pointer">
-                  <option>C++ 17</option>
-                  <option>C++ 20</option>
-                  <option>Java</option>
-                  <option>Python 3</option>
-              </select>
-              <button onClick={runCode} disabled={isRunning} className="px-4 py-1.5 rounded text-xs font-semibold text-slate-300 hover:bg-white/5 border border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed">Run Code</button>
+              {/* <button onClick={() => setConsoleVisible((v) => !v)} className="text-xs text-slate-400 hover:text-white flex items-center gap-2">Console</button>
+              <button onClick={() => setShowCustomInput((s) => !s)} className="text-xs text-slate-400 hover:text-white flex items-center gap-2">Input</button> */}
+            </div>
+            <div className="flex items-center gap-3">
+              {/* <button onClick={runCode} disabled={isRunning} className="px-4 py-1.5 rounded text-xs font-semibold text-slate-300 hover:bg-white/5 border border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed">Run Code</button> */}
+              <button onClick={runWithJudge0} disabled={isRunning} className="px-4 py-1.5 rounded text-xs font-semibold text-slate-300 hover:bg-white/5 border border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed">Run</button>
               <button onClick={submitSolution} disabled={isRunning} className="px-4 py-1.5 rounded text-xs font-semibold bg-green-600 text-white hover:bg-green-500 transition shadow-lg shadow-green-500/10 disabled:opacity-50 disabled:cursor-not-allowed">Submit</button>
             </div>
           </div>

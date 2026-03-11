@@ -198,3 +198,25 @@ as $$
 $$;
 
 grant execute on function public.pick_random_dsa_question(text, text[], text[], text, uuid) to authenticated;
+
+-- 3) Messages table for contact form
+create table if not exists public.messages (
+  id bigserial primary key,
+  name text not null,
+  email text not null,
+  message text not null,
+  created_at timestamptz default now(),
+  sent_to_email boolean default false
+);
+
+-- Enable RLS
+alter table public.messages enable row level security;
+
+-- Anyone can insert messages
+create policy "Anyone can insert messages" on public.messages
+  for insert
+  with check (true);
+
+-- Create index on created_at for sorting
+create index if not exists messages_created_at_idx
+  on public.messages (created_at desc);

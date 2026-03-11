@@ -104,14 +104,12 @@ export async function POST(req: Request) {
       }
     `;
 
-    // 2. Get response from Gemini
-    // NOTE: Model availability/quota differs per key/project. We try a few well-known
-    // aliases to avoid hard failures.
+   
     const genAI = new GoogleGenerativeAI(apiKey);
     const preferredModel = process.env.GEMINI_MODEL;
     const modelCandidates = [
       preferredModel,
-      "gemini-2.0-flash", // Higher priority for JSON mode reliability
+      "gemini-2.0-flash", 
       "gemini-1.5-flash",
       "gemini-1.5-pro",
       "gemini-flash-lite-latest",
@@ -131,10 +129,7 @@ export async function POST(req: Request) {
           },
         });
 
-        // Sanitize history: Gemini requires the first message to be from 'user'.
-        // If the first message in our stored history is 'model', we must either:
-        // 1. Drop it (if not critical), or
-        // 2. Prepend a dummy user message to satisfy the API check.
+       
         let safeHistory = (messages ?? []).map((m: any) => ({
             role: m.role === "user" ? "user" : "model",
             parts: [{ text: m.content }],
@@ -157,7 +152,7 @@ export async function POST(req: Request) {
         break;
       } catch (e: any) {
         lastErr = e;
-        // Try the next model on known transient/availability failures.
+       
         const status = getUpstreamStatus(e);
         if (status === 404 || status === 429) continue;
         break;
@@ -228,9 +223,7 @@ export async function POST(req: Request) {
 
     // 3. Handle State Transitions & Data Fetching
     if (shouldFetchQuestion || (nextState === 'approach' && !currentQuestion)) {
-      // Fetch a random question from Supabase
-      // User Request: "it should not have the topic selected" -> We ignore topic if company is present,
-      // or simply pass empty array to widen the search as requested.
+      
       const ignoreTopicFilter = true; 
       
       const { data, error } = await supabase.rpc('pick_random_dsa_question', {

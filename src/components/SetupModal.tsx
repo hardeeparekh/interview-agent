@@ -79,9 +79,9 @@ export default function SetupModal({ open, onClose, onStart }: Props) {
         <div className="mb-6">
           <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Duration (minutes)</label>
           <div className="grid grid-cols-4 gap-3">
-            {[30,45,60,75].map((d) => (
+            {[30, 45, 60, 75].map((d) => (
               <label key={d} className="cursor-pointer">
-                <input type="radio" name="duration" value={d} checked={duration===d} onChange={() => setDuration(d)} className="peer sr-only" />
+                <input type="radio" name="duration" value={d} checked={duration === d} onChange={() => setDuration(d)} className="peer sr-only" />
                 <div className={`text-center py-2 rounded-lg border border-white/10 bg-slate-900 peer-checked:bg-blue-600 peer-checked:border-blue-500 peer-checked:text-white text-slate-400 text-sm transition hover:bg-white/5`}>
                   {d}m
                 </div>
@@ -94,8 +94,16 @@ export default function SetupModal({ open, onClose, onStart }: Props) {
           <button
             onClick={() => {
               const available = TOPICS.filter((t) => !excludeTopics.includes(t));
-              const chosenTopic = available.length > 0 ? available[Math.floor(Math.random() * available.length)] : "Random";
-              onStart({ company: company || "Generic", topic: chosenTopic, duration, excludeTopics });
+              let topicLabel = "Technical Interview";
+
+              if (excludeTopics.length > 0) {
+                // Construct a label based on exclusions as requested
+                topicLabel = `Excluding ${excludeTopics.join(", ")}`;
+              } else if (available.length === 1) {
+                topicLabel = available[0];
+              }
+
+              onStart({ company: company || "Generic", topic: topicLabel, duration, excludeTopics });
             }}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg shadow-lg shadow-blue-500/25 transition transform active:scale-[0.98]"
           >
