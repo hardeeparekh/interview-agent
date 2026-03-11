@@ -81,7 +81,7 @@ export default function LoginPage() {
         }
 
         if ((data as any)?.session) {
-          router.push("/dashboard");
+          router.push("/account");
         } else {
           setMessage("Check your email for a confirmation link (if enabled). If you already have an account, try signing in.");
         }
@@ -124,7 +124,7 @@ export default function LoginPage() {
         setMessage(error.message || "Sign in failed");
       } else {
         console.log("[handleSignIn] Sign in successful, redirecting to /account");
-          router.push("/dashboard");
+          router.push("/account");
       }
     } catch (err) {
       setLoading(false);
@@ -137,7 +137,7 @@ export default function LoginPage() {
     setLoading(true);
     setMessage("");
     try {
-      const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+      const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/account` : undefined;
       const { error } = await supabase!.auth.signInWithOAuth({ provider, options: { redirectTo } });
       if (error) setMessage(error.message);
     } catch (err: any) {
