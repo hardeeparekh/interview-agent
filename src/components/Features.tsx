@@ -69,23 +69,25 @@ export default function Features() {
         </p>
       </div>
 
-      <div className="mx-auto max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8">
-        {features.map((feature) => (
-          <article
-            key={feature.title}
-            className="group relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(15,23,42,0.62))] p-8 shadow-[0_12px_36px_rgba(2,6,23,0.32)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_44px_rgba(2,6,23,0.45)]"
-          >
-            <div className={`pointer-events-none absolute -right-14 -top-14 h-40 w-40 rounded-full blur-3xl ${feature.accentGlow}`} aria-hidden="true"></div>
+      <div className="mx-auto max-w-2xl px-4">
+        <div className="features-carousel-container">
+          {features.map((feature) => (
+            <article
+              key={feature.title}
+              className="group feature-card-animated relative overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.82),rgba(15,23,42,0.62))] p-8 shadow-[0_12px_36px_rgba(2,6,23,0.32)] backdrop-blur-md transition-all duration-300 hover:-translate-y-1 hover:border-white/20 hover:shadow-[0_20px_44px_rgba(2,6,23,0.45)]"
+            >
+              <div className={`pointer-events-none absolute -right-14 -top-14 h-40 w-40 rounded-full blur-3xl ${feature.accentGlow}`} aria-hidden="true"></div>
 
-            <div className={`relative z-10 w-12 h-12 rounded-xl flex items-center justify-center mb-6 ring-1 ring-white/10 transition-transform duration-300 group-hover:scale-105 ${feature.iconBg}`}>
-              <svg className={`w-6 h-6 ${feature.iconColor}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={feature.iconPath}></path>
-              </svg>
-            </div>
-            <h3 className="relative z-10 text-2xl font-semibold tracking-tight mb-3">{feature.title}</h3>
-            <p className="relative z-10 text-slate-300/90 text-base leading-8">{feature.description}</p>
-          </article>
-        ))}
+              <div className={`relative z-10 w-12 h-12 rounded-xl flex items-center justify-center mb-6 ring-1 ring-white/10 transition-transform duration-300 group-hover:scale-105 ${feature.iconBg}`}>
+                <svg className={`w-6 h-6 ${feature.iconColor}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={feature.iconPath}></path>
+                </svg>
+              </div>
+              <h3 className="relative z-10 text-2xl font-semibold tracking-tight mb-3">{feature.title}</h3>
+              <p className="relative z-10 text-slate-300/90 text-base leading-8">{feature.description}</p>
+            </article>
+          ))}
+        </div>
       </div>
     </div>
   );

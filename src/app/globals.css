@@ -422,3 +422,138 @@ body { font-family: 'Inter', sans-serif; background-color: var(--bg-deep); color
 .login-page-courier * {
   font-family: "Courier New", Courier, monospace;
 }
+
+/* Logo Slider */
+.slider {
+	background: transparent;
+	box-shadow: none;
+	height: 100px;
+	margin: auto;
+	overflow:hidden;
+	position: relative;
+	width: 100%;
+	max-width: 960px;
+
+	&::before,
+	&::after {
+		content: "";
+		height: 100px;
+		position: absolute;
+		width: 200px;
+		z-index: 2;
+		background: linear-gradient(to right, rgba(2,6,23,1) 0%, rgba(2,6,23,0) 100%);
+	}
+
+	&::after {
+		right: 0;
+		top: 0;
+		transform: rotateZ(180deg);
+	}
+
+	&::before {
+		left: 0;
+		top: 0;
+	}
+
+	.slide-track {
+		animation: scroll 40s linear infinite;
+		display: flex;
+		width: calc(250px * 14);
+	}
+
+	.slide {
+		height: 100px;
+		width: 250px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.slide img {
+		max-height: 80px;
+		max-width: 200px;
+		object-fit: contain;
+		filter: brightness(0.8) contrast(1.2);
+	}
+}
+
+@keyframes scroll {
+	0% { transform: translateX(0); }
+	100% { transform: translateX(calc(-250px * 7))}
+}
+
+/* Feature Cards Carousel Animation */
+:root {
+  --animation-timing: 16s;
+}
+
+.features-carousel-container {
+  position: relative;
+  height: 24rem;
+  margin-top: 3rem;
+}
+
+.feature-card-animated {
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  animation: carouselAnimateVertical var(--animation-timing) ease-in-out infinite;
+  will-change: transform, opacity, filter;
+}
+
+
+.feature-card-animated:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.feature-card-animated:nth-child(2) {
+  animation-delay: 4s;
+}
+
+.feature-card-animated:nth-child(3) {
+  animation-delay: 8s;
+}
+
+.feature-card-animated:nth-child(4) {
+  animation-delay: 12s;
+}
+
+@keyframes carouselAnimateVertical {
+  0% {
+    transform: translateX(-200%) scale(0.3);
+    opacity: 0;
+    filter: blur(12px);
+    visibility: hidden;
+  }
+  15% {
+    transform: translateX(-50%) scale(0.7);
+    opacity: 0.3;
+    filter: blur(4px);
+    visibility: visible;
+  }
+  30% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+    filter: blur(0px);
+    visibility: visible;
+  }
+  70% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+    filter: blur(0px);
+    visibility: visible;
+  }
+  85% {
+    transform: translateX(50%) scale(0.7);
+    opacity: 0.3;
+    filter: blur(4px);
+    visibility: visible;
+  }
+  100% {
+    transform: translateX(200%) scale(0.3);
+    opacity: 0;
+    filter: blur(12px);
+    visibility: hidden;
+  }
+}

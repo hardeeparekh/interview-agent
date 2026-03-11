@@ -3,6 +3,7 @@ import MessageForm from "./MessageForm";
 
 export default function Footer() {
   return (
+    
     <footer id="contact" className="py-20 border-t border-white/5">
       <div className="mb-12" style={{marginBottom:'100px'}}>
         <h2 className="text-white font-bold text-3xl mb-12 tracking-tight text-center">Prepare for Interviews at Top Tech Companies</h2>
