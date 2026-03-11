@@ -29,7 +29,7 @@ export default function AuthOverlay() {
 
   async function handleOAuth(provider: "google" | "github") {
     // Redirect back to the account page after OAuth completes
-    const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+    const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/account` : undefined;
     await supabase!.auth.signInWithOAuth({ provider, options: { redirectTo } });
   }
 
@@ -50,7 +50,7 @@ export default function AuthOverlay() {
       if (error) return setMessage(error.message || "Sign in failed");
       // success
       close();
-      router.push("/dashboard");
+      router.push("/account");
     } catch (err) {
       setLoading(false);
       console.error("[AuthOverlay] signIn exception", err);
@@ -90,7 +90,7 @@ export default function AuthOverlay() {
       if ((data as any)?.session) {
         // refresh session and redirect to dashboard
         await supabase.auth.getSession();
-        router.push("/dashboard");
+        router.push("/account");
       } else {
         setMessage("Check your email for a confirmation link (if enabled).");
       }
